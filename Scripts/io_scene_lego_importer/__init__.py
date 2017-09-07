@@ -46,6 +46,12 @@ class ImportLego(bpy.types.Operator, ImportHelper):
 		default=True
 	)
 
+	root = BoolProperty(
+		name="Add an empty",
+		description="Add empty to be a master control for the entire model. Supports seperate models in single LDraw file.",
+		default=True
+	)
+
 	create_materials = BoolProperty(
 	name="Create Materials",
 	description="Create realistic Cycles materials for the Lego bricks using Principled BSDF.",
@@ -66,14 +72,18 @@ class ImportLego(bpy.types.Operator, ImportHelper):
 
 	def draw(self, context):
 		layout = self.layout
-		row = layout.row(align=True)
-		row.prop(self, "resolution")
-		row.prop(self, "linked_type")
-		row.prop(self, "create_materials")
-		row.prop(self, "material_label")
+		layout.label(text="Brick Resolution", icon="MOD_REMESH")
+		layout.prop(self, "resolution", expand=True)
+		layout.prop(self, "linked_type")
+		layout.prop(self, "root")
+		box = layout.box()
+		box.prop(self, "create_materials")
+		if self.create_materials == True:
+			box.prop(self, "material_label")
 
 	def execute(self, context):
-		Console.log("Future code")
+		# lego_file = self.filepath
+		# print(lego_file)
 		return {'FINISHED'}
 
 def menuImport(self, context):
