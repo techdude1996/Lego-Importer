@@ -84,6 +84,9 @@ class ImportLego(bpy.types.Operator, ImportHelper):
 	def execute(self, context):
 		# lego_file = self.filepath
 		# print(lego_file)
+		from . import import_lego
+		import_lego.load_file(self, context)
+
 		return {'FINISHED'}
 
 def menuImport(self, context):
