@@ -52,34 +52,40 @@ class ImportLego(bpy.types.Operator, ImportHelper):
 		default=True
 	)
 
+	logo = BoolProperty(
+		name="Add Lego Logo",
+		description="Add the Lego logo to every standard stud.",
+		default=False
+	)
+
 	create_materials = BoolProperty(
 	name="Create Materials",
 	description="Create realistic Cycles materials for the Lego bricks using Principled BSDF.",
 	default=True
 	)
 
-	material_label = EnumProperty(
-		name="Material names",
-		description="How materials are going to be named",
-		default="Code",
-		items=(
-			("Code", "Material XX", "Name materials by their Lego code."),
-			("Col", "Color", "Name materials by their color."),
-			("CodeCol", "Material XX - Color", "Name materials by code, then color."),
-			("ColCode", "Color - Material XX", "Name materials by color then code.")
-		)
+	bevel = BoolProperty(
+		name="Add Bevel",
+		description="Add the bevel modifier to all imported bricks.",
+		default=True
+	)
+
+	uvmap = BoolProperty(
+		name="Add UV Map",
+		description="UV unwrap everybrick (if able). Most bricks can be unwrapped at any time.",
+		default=False
 	)
 
 	def draw(self, context):
 		layout = self.layout
 		layout.label(text="Brick Resolution", icon="MOD_REMESH")
 		layout.prop(self, "resolution", expand=True)
-		layout.prop(self, "linked_type")
-		layout.prop(self, "root")
-		box = layout.box()
-		box.prop(self, "create_materials")
-		if self.create_materials == True:
-			box.prop(self, "material_label")
+		layout.prop(self, "linked_type", icon="CONSTRAINT")
+		layout.prop(self, "root", icon="OUTLINER_OB_EMPTY")
+		layout.prop(self, "logo")
+		layout.prop(self, "bevel", icon="MOD_BEVEL")
+		layout.prop(self, "uvmap", icon="GROUP_UVS")
+		layout.prop(self, "create_materials", icon="MATERIAL_DATA")
 
 	def execute(self, context):
 		# lego_file = self.filepath
