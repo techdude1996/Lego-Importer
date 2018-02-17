@@ -139,30 +139,40 @@ def read_ldraw(self, context, src):
 					# Make the brick the active object:
 					bpy.ops.object.join()
 
-			# Select the newly added brick and transform it accordingly:
-			current_brick.location = (pos_x, pos_y, pos_z)
-			current_brick.rotation_euler = (rot_x, rot_y, rot_z)
-			current_brick.name = 'Part ' + str(part_num)
-
 			# Brick Material:
 			if self.create_materials:
 				mat = bpy.data.materials.get("Material " + col[1])
 				if mat is None:
 					mat = bpy.data.materials.new(name=("Material " + col[1]))
 					mat.use_nodes = True
-					# Remove Diffuse BSDF
-					mat.node_tree.nodes.remove(mat.node_tree.nodes.get('Diffuse BSDF'))
-					# Grab the output node:
-					output_note = mat.node_tree.nodes.get('Material Output')
-					# Create the Principled BSDF node:
-					principled_node = mat.node_tree.nodes.new("ShaderNodeBsdfPrincipled")
-					principled_node.inputs['Base Color'].default_value = material_lib.ldraw_materials[col[1]]
-					# distribution options either 'GGX' or 'MULTI_GGX'
-					principled_node.distribution = 'GGX'
-					principled_node.inputs['Roughness'].default_value = 0.300
-					principled_node.inputs['Specular'].default_value = math.pow((1.55 - 1.00) / (1.55 + 1.0), 2) / 0.08
-					mat.node_tree.links.new(output_note.inputs[0], principled_node.outputs[0])
-			bpy.data.objects["Part " + str(part_num)].active_material = mat
+					mat = material_lib.get_material(mat, int(col[1]))
+				bpy.data.objects["Part " + str(part_num)].active_material = mat
+
+			# Brick Bevel:
+			if self.bevel:
+				# Edit the modifier:
+				current_brick.modifiers["Bevel"].width = 0.002
+				current_brick.modifiers["Bevel"].use_clamp_overlap = True
+				current_brick.modifiers["Bevel"].limit_method = "WEIGHT"
+				current_brick.modifiers["Bevel"].offset_type = "OFFSET"
+				if resolution == "_H":
+					current_brick.modifiers["Bevel"].segments = 3
+				else:
+					current_brick.modifiers["Bevel"].segments = 1
+			else:
+				# Remove the modifier
+				current_brick.modifiers.remove(current_brick.modifiers["Bevel"])
+
+			# UV Map
+			if !self.uvmap:
+				# Remove UV Map
+				bpy.ops.mesh.uv_texture_remove()
+
+			# Select the newly added brick and transform it accordingly:
+			current_brick.location = (pos_x, pos_y, pos_z)
+			current_brick.rotation_euler = (rot_x, rot_y, rot_z)
+			current_brick.name = 'Part ' + str(part_num)
+
 			part_num += 1
 
 	else:
@@ -207,7 +217,9 @@ def read_ldraw(self, context, src):
 	Bevel Modifier:
 		Width: 0.002
 		Segments: 3 for H, 1 for L
-
-	Blender Bevel: 0.007
-	units: 6 for H, 3 for L
+    
+    Blender Mesh Bevel (Not Modifier)
+	    Amount: 0.007
+	    Segments: 6 for High
+	              3 for Low
 """

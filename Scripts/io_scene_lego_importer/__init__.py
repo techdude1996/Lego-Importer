@@ -59,9 +59,9 @@ class ImportLego(bpy.types.Operator, ImportHelper):
 	)
 
 	create_materials = BoolProperty(
-	name="Create Materials",
-	description="Create realistic Cycles materials for the Lego bricks using Principled BSDF.",
-	default=True
+		name="Create Materials",
+		description="Create realistic Cycles materials for the Lego bricks using Principled BSDF.",
+		default=True
 	)
 
 	bevel = BoolProperty(
