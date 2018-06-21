@@ -1,14 +1,12 @@
 import os
 from os import path
 import math
+import sqlite3
 import bpy
-
-from . import material_lib
 
 # Generic function that forwards the file to the appropriate import function
 def load_file(self, context):
 	src_name, src_ext = os.path.splitext(self.filepath)
-
 	if src_ext == '.ldr' or src_ext == '.dat':
 		# If the file is LDraw, send to read_ldraw function
 		read_ldraw(self, context, self.filepath)
@@ -27,12 +25,15 @@ def read_ldraw(self, context, src):
 
 	# If the file was successfully opened, continue processing:
 	if ldraw_file.mode == "r":
-
 		# Since LDraw is a line-based file, read in the whole file as lines:
+		file_loc, file_name = os.path.split(src)
 		ldraw_lines = ldraw_file.readlines()
 		# Part counter:
 		part_num = 1
 
+		# Part list:
+		model_bricks = []
+		grouped_bricks = [[]]
 		# Get the path of the parts library:
 		addons_paths = bpy.utils.script_paths("addons")
 		library_path = "library"
@@ -104,11 +105,11 @@ def read_ldraw(self, context, src):
 			print("directory = " + directory)
 			print("filename = " + brick)
 			print("\n")
-			bpy.ops.wm.append(directory=filepath, filename=brick)
+			bpy.ops.object.select_all(action='DESELECT')
+			bpy.ops.wm.append(directory=filepath, filename=brick, active_layer=True, autoselect=True)
 
 			# Select brick:
-			current_brick = bpy.data.objects[str(part) + str(resolution)]
-			bpy.context.scene.objects.active = current_brick
+			current_brick = bpy.context.selected_objects[0]
 
 			# Add the Logo to the brick studs:
 			if self.logo:
@@ -141,11 +142,20 @@ def read_ldraw(self, context, src):
 
 			# Brick Material:
 			if self.create_materials:
-				mat = bpy.data.materials.get("Material " + col[1])
+				# TODO: Check if LEGO or LDraw
+				# Convert LDraw color ID to Lego color ID
+				con = sqlite3.connect(library_path + 'materials.db')
+				cursor = con.cursor()
+				cursor.execute("SELECT LEGO_ID FROM LDRAW_MATERIALS WHERE COLOR_ID = :color_id", {"color_id": col[1]})
+				row = cursor.fetchone()
+				mat = bpy.data.materials.get("LEGO." + '{0:03d}'.format(row[1]))
+				# Append material if not already existing:
 				if mat is None:
-					mat = bpy.data.materials.new(name=("Material " + col[1]))
-					mat.use_nodes = True
-					mat = material_lib.get_material(mat, int(col[1]))
+					filepath = library_path + "/_Materials.blend/Material/"
+					new_material = "LEGO." + '{0:03d}'.format(row[1])
+					bpy.ops.wm.append(directory=filepath, filename=new_material)
+				mat = bpy.data.materials.get("LEGO." + '{0:03d}'.format(row[1]))
+				# Assign material
 				bpy.data.objects["Part " + str(part_num)].active_material = mat
 
 			# Brick Bevel:
@@ -168,12 +178,36 @@ def read_ldraw(self, context, src):
 				# Remove UV Map
 				bpy.ops.mesh.uv_texture_remove()
 
+			model_bricks.append(current_brick)
+			if(part in grouped_bricks):
+				grouped_bricks[part].append(current_brick)
+			else:
+				grouped_bricks.append(part)
+				grouped_bricks[part].append(current_brick)
+			part_num = len(grouped_bricks[part]) - 1
 			# Select the newly added brick and transform it accordingly:
 			current_brick.location = (pos_x, pos_y, pos_z)
 			current_brick.rotation_euler = (rot_x, rot_y, rot_z)
-			current_brick.name = 'Part ' + str(part_num)
+			current_brick.name = part + '.' + '{0:04d}'.format(part_num)
 
-			part_num += 1
+		if self.root:
+			bpy.ops.object.select_all(action="DESELECT")
+			bpy.ops.object.empty_add(type='PLAIN_AXES')
+			empty = bpy.context.selected_objects[0]
+			empty.name = file_name
+			for brick in model_bricks:
+				brick.select = True
+			empty.select = True
+			bpy.ops.object.parent_set(type='OBJECT', keep_transform=True)
+			bpy.ops.object.select_all(action="DESELECT")
+
+		if self.link:
+			for group in grouped_bricks:
+				bpy.ops.object.select_all(action="DESELECT")
+				for brick in group:
+					brick.select = True
+				bpy.ops.object.make_links_data(type='OBDATA')
+			bpy.ops.object.select_all(action="DESELECT")
 
 	else:
 		print("Error, file not opened!")
@@ -217,7 +251,7 @@ def read_ldraw(self, context, src):
 	Bevel Modifier:
 		Width: 0.002
 		Segments: 3 for H, 1 for L
-    
+
     Blender Mesh Bevel (Not Modifier)
 	    Amount: 0.007
 	    Segments: 6 for High
