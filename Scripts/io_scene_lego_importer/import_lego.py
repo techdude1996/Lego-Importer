@@ -1,3 +1,7 @@
+#TODO
+#	* Get Parts list and grouping working (HIGH)
+#	* LSynth and "404" handler (MED)
+
 import os
 from os import path
 import math
@@ -6,6 +10,12 @@ import bpy
 from zipfile import ZipFile
 #import tempfile
 import xml.etree.ElementTree as ET
+
+DEBUG = True
+
+# Part list:
+model_bricks = []
+grouped_bricks = {}
 
 # Generic function that forwards the file to the appropriate import function
 def load_file(self, context):
@@ -36,9 +46,6 @@ def read_ldraw(self, context, src):
 		# Part counter:
 		part_num = 1
 
-		# Part list:
-		model_bricks = []
-		grouped_bricks = dict(list)
 		# Get the path of the parts library:
 		addons_paths = bpy.utils.script_paths("addons")
 		library_path = "library"
@@ -55,8 +62,8 @@ def read_ldraw(self, context, src):
 			# Split the data row into a proccessable array:
 			col = item.split()
 
-			# Skip 0 type lines (Comments)
-			if col[0] == "0":
+			# Skip any lines other than brick references
+			if col[0] != "1":
 				continue;
 
 			# Get the part number:
@@ -71,11 +78,6 @@ def read_ldraw(self, context, src):
 			transform[1] = float(col[8]) * float(col[2]) + float(col[9]) * float(col[3]) + float(col[10]) * float(col[4])
 			transform[2] = float(col[11]) * float(col[2]) + float(col[12]) * float(col[3]) + float(col[13]) * float(col[4])
 
-			# Debug: Print the new x, y, z
-			print("x = " + str(transform[0]))
-			print("y = " + str(transform[2]))
-			print("z = " + str(-transform[1])) # z
-
 			# Decompose the transformation matrix to get the rotation:
 			rot_x = math.atan2(float(col[12]), float(col[13]))
 			rot_y = math.atan2(float(col[8]), float(col[5]))
@@ -87,13 +89,14 @@ def read_ldraw(self, context, src):
 			pos_z = (-float(col[3]) * 0.01)
 
 			# Debug: Print new position and the rotation in degrees:
-			print("pos x = " + str(pos_x))
-			print("pos y = " + str(pos_y))
-			print("pos z = " + str(pos_z))
+			if DEBUG:
+				print("pos x = " + str(pos_x))
+				print("pos y = " + str(pos_y))
+				print("pos z = " + str(pos_z))
 
-			print("rot x = " + str(int(round(math.degrees(rot_x)))))
-			print("rot y = " + str(int(round(math.degrees(rot_y)))))
-			print("rot z = " + str(int(round(math.degrees(rot_z)))))
+				print("rot x = " + str(int(round(math.degrees(rot_x)))))
+				print("rot y = " + str(int(round(math.degrees(rot_y)))))
+				print("rot z = " + str(int(round(math.degrees(rot_z)))))
 
 			# Select the correct resolution from the import settings:
 			if self.resolution == "LowRes":
@@ -106,10 +109,12 @@ def read_ldraw(self, context, src):
 			directory = "/Object/"
 			brick = part + resolution
 			# Debug: Print the appending variables:
-			print("filepath = " + filepath)
-			print("directory = " + directory)
-			print("filename = " + brick)
-			print("\n")
+			if DEBUG:
+				print("filepath = " + filepath)
+				print("directory = " + directory)
+				print("filename = " + brick)
+				print("\n")
+
 			bpy.ops.object.select_all(action='DESELECT')
 			bpy.ops.wm.append(directory=filepath, filename=brick, active_layer=True, autoselect=True)
 
@@ -119,7 +124,6 @@ def read_ldraw(self, context, src):
 			# Add the Logo to the brick studs:
 			if self.logo:
 				# Append the Lego Logo to the scene:
-				print("Adding Logo")
 				filepath = library_path + "/Logo.blend/Object/"
 				directory = "/Object/"
 				logo_path = "Logo.Text"
@@ -134,10 +138,11 @@ def read_ldraw(self, context, src):
 					# Append the logo the scene:
 					bpy.ops.wm.append(directory=filepath, filename=logo_path)
 					logo = bpy.data.objects["Logo.Text"]
-					print(vertex[0])
-					print(vertex[1])
-					print(vertex[2])
-					print("\n")
+					if DEBUG:
+						print(vertex[0])
+						print(vertex[1])
+						print(vertex[2])
+						print("\n")
 					logo.location = (vertex[0], vertex[1], vertex[2])
 					# Select the two objects for joining:
 					bpy.ops.object.select_all(action="DESELECT")
@@ -149,21 +154,24 @@ def read_ldraw(self, context, src):
 
 			# Brick Material:
 			if self.create_materials:
-				# TODO: Check if LEGO or LDraw
 				# Convert LDraw color ID to Lego color ID
-				print(library_path + '/materials.db')
+				if DEBUG:
+					print(library_path + '/materials.db') # Debug: Print Material Database location
+
+				# Query the material database to get Lego ID from LDraw ID
 				con = sqlite3.connect(library_path + '/materials.db')
 				cursor = con.cursor()
-				# cursor.execute("SELECT LEGO_ID FROM LDRAW_MATERIALS WHERE COLOR_ID = :color_id", {"color_id": col[1]})
-				cursor.execute("SELECT COLOR_ID FROM LEGO_MATERIALS WHERE COLOR_ID = :color_id", {"color_id": 11})
+				cursor.execute("SELECT LEGO_ID FROM LDRAW_MATERIALS WHERE COLOR_ID = :color_id", {"color_id": col[1]})
 				row = cursor.fetchone()
 				mat = bpy.data.materials.get("LEGO." + '{0:03d}'.format(row[0]))
+
 				# Append material if not already existing:
 				if mat is None:
 					filepath = library_path + "/_Materials.blend/Material/"
 					new_material = "LEGO." + '{0:03d}'.format(row[0])
 					bpy.ops.wm.append(directory=filepath, filename=new_material)
 				mat = bpy.data.materials.get("LEGO." + '{0:03d}'.format(row[0]))
+
 				# Assign material
 				current_brick.active_material = mat
 				con.close()
@@ -188,8 +196,14 @@ def read_ldraw(self, context, src):
 				# Remove UV Map
 				bpy.ops.mesh.uv_texture_remove()
 
+			# Add brick to master list
 			model_bricks.append(current_brick)
+
+			# Add brick to group list
+			if part not in grouped_bricks:
+				grouped_bricks[part] = []
 			grouped_bricks[part].append(current_brick)
+
 			part_num = len(grouped_bricks[part]) - 1
 			# Select the newly added brick and transform it accordingly:
 			current_brick.location = (pos_x, pos_y, pos_z)
@@ -207,7 +221,7 @@ def read_ldraw(self, context, src):
 			bpy.ops.object.parent_set(type='OBJECT', keep_transform=True)
 			bpy.ops.object.select_all(action="DESELECT")
 
-		if self.link:
+		if self.linked_type:
 			for group in grouped_bricks:
 				bpy.ops.object.select_all(action="DESELECT")
 				for brick in group:
@@ -219,9 +233,6 @@ def read_ldraw(self, context, src):
 	ldraw_file.close()
 
 def read_ldd(self, context, src):
-	# Part list:
-	model_bricks = []
-	grouped_bricks = [[]]
 	# Get the path of the parts library:
 	addons_paths = bpy.utils.script_paths("addons")
 	library_path = "library"
@@ -232,21 +243,33 @@ def read_ldd(self, context, src):
 	# Unzip
 	ldd_zip = ZipFile(file=src, mode="r")
 	# Process
-	ldd_tree = ET.parse(ldd_zip.open('IMAGE100.LXFML').read())
-	ldd_bricks = ldd_tree.findall(match="Bricks/Brick")
+	ldd_tree = ET.fromstring(ldd_zip.open('IMAGE100.LXFML').read())
+	ldd_bricks = ldd_tree.findall('Bricks/Brick')
 	for ldd_brick in ldd_bricks:
+		part = ldd_brick.get(key='designID')
 		matrix_string = ldd_brick.find('Part/Bone').get(key='transformation')
 		matrix = matrix_string.split(',')
 		# Transform the origin to the new location:
 		transform = [None] * 3
-		transform[0] = double(matrix[3]) * double(matrix[0]) + double(matrix[4]) * double(matrix[1]) + double(matrix[5]) * double(matrix[2])
-		transform[1] = double(matrix[6]) * double(matrix[0]) + double(matrix[7]) * double(matrix[1]) + double(matrix[8]) * double(matrix[2])
-		transform[2] = double(matrix[9]) * double(matrix[0]) + double(matrix[10]) * double(matrix[1]) + double(matrix[11]) * double(matrix[2])
+		transform[0] = float(matrix[3]) * float(matrix[0]) + float(matrix[4]) * float(matrix[1]) + float(matrix[5]) * float(matrix[2])
+		transform[1] = float(matrix[6]) * float(matrix[0]) + float(matrix[7]) * float(matrix[1]) + float(matrix[8]) * float(matrix[2])
+		transform[2] = float(matrix[9]) * float(matrix[0]) + float(matrix[10]) * float(matrix[1]) + float(matrix[11]) * float(matrix[2])
 
 		# Decompose the transformation matrix to get the rotation:
-		rot_x = math.atan2(double(matrix[10]), double(matrix[11]))
-		rot_y = math.atan2(double(matrix[6]), double(matrix[3]))
-		rot_z = math.atan2(double(matrix[9]), math.sqrt(double(matrix[10]) * double(matrix[10]) + double(matrix[11]) * double(matrix[11])))
+		rot_x = math.atan2(float(matrix[10]), float(matrix[11]))
+		rot_y = math.atan2(float(matrix[6]), float(matrix[3]))
+		rot_z = math.atan2(float(matrix[9]), math.sqrt(float(matrix[10]) * float(matrix[10]) + float(matrix[11]) * float(matrix[11])))
+
+		# Debug:
+		if DEBUG:
+			print("pos x = " + str(transform[0]))
+			print("pos y = " + str(transform[1]))
+			print("pos z = " + str(transform[2]))
+
+			print("rot x = " + str(int(round(math.degrees(rot_x)))))
+			print("rot y = " + str(int(round(math.degrees(rot_y)))))
+			print("rot z = " + str(int(round(math.degrees(rot_z)))))
+
 
 		if self.resolution == "LowRes":
 			resolution = "_L"
@@ -292,14 +315,16 @@ def read_ldd(self, context, src):
 				print("\n")
 				logo.location = (vertex[0], vertex[1], vertex[2])
 				# Select the two objects for joining:
+				bpy.ops.object.select_all(action="DESELECT")
 				logo.select = True
 				current_brick.select = True
+				bpy.context.scene.objects.active = current_brick
 				# Make the brick the active object:
 				bpy.ops.object.join()
 
 		# Brick Material:
 		if self.create_materials:
-			mat_num = ldd_brick.find('Part').get(key='materials').split(',')[0]
+			mat_num = int(ldd_brick.find('Part').get(key='materials').split(',')[0])
 			mat = bpy.data.materials.get("LEGO." + '{0:03d}'.format(mat_num))
 			# Append material if not already existing:
 			if mat is None:
@@ -308,7 +333,7 @@ def read_ldd(self, context, src):
 				bpy.ops.wm.append(directory=filepath, filename=new_material)
 			mat = bpy.data.materials.get("LEGO." + '{0:03d}'.format(mat_num))
 			# Assign material
-			bpy.data.objects["Part " + str(part_num)].active_material = mat
+			current_brick.active_material = mat
 
 		# Brick Bevel:
 		if self.bevel:
@@ -330,15 +355,17 @@ def read_ldd(self, context, src):
 			# Remove UV Map
 			bpy.ops.mesh.uv_texture_remove()
 
+		# Add brick to master list
 		model_bricks.append(current_brick)
-		if(part in grouped_bricks):
-			grouped_bricks[part].append(current_brick)
-		else:
-			grouped_bricks.append(part)
-			grouped_bricks[part].append(current_brick)
+
+		# Add brick to group list
+		if part not in grouped_bricks:
+			grouped_bricks[part] = []
+		grouped_bricks[part].append(current_brick)
+
 		part_num = len(grouped_bricks[part]) - 1
 		# Select the newly added brick and transform it accordingly:
-		current_brick.location = (pos_x, pos_y, pos_z)
+		current_brick.location = (transform[0], transform[1], transform[2])
 		current_brick.rotation_euler = (rot_x, rot_y, rot_z)
 		current_brick.name = part + '.' + '{0:04d}'.format(part_num)
 
@@ -386,4 +413,8 @@ def read_ldd(self, context, src):
 	    Amount: 0.007
 	    Segments: 6 for High
 	              3 for Low
+
+	Hard Surface notes:
+		Stud bevel size (when scaled): 0.007
+		Stud base bevel (when scaled): 0.001
 """
